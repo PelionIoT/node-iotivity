@@ -1,0 +1,10 @@
+{
+  "name": "node-OIC",
+  "version": "0.0.1",
+  "description": "The OIC Stack for node.js",
+  "author": "Ed <ed@wigwag.com>",
+  "dependencies": {
+    "node-uuid": "~1.4.2"
+  },
+  "devDependencies": {}
+}
