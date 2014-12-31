@@ -160,7 +160,9 @@ var OIC = function(stackopts) {
      * @return {[type]} [description]
      */
 	this.startServer = function() {
-		server = COAP.createServer();
+		server = COAP.createServer({
+            addMembership: [ '224.0.1.187' ]
+        });
 
 		server.on('request', function(req, res) {
 
