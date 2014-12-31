@@ -1,13 +1,28 @@
 
-
+var util = require('util');
 var COAP = require('./lib/node-coap');
 var _ = require('./lib/underscore.js');
 var ordererdTable = require('./lib/orderedTable.js');
+var lookupTreeRegex = require('./lib/lookupTreeRegex');
 
 var defaultOpts = {
-    port: 5683        // default COAP / OIC port
+    port: 5683,        // default COAP / OIC port
+    debugOutput: false, // debug output to console 
+    errorOutput: false, // output errors?
+    debugOut : function() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('<OIC debug> ');
+        console.log.apply(console,args);
+    },
+    errorOut: function() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('<OIC error> ');
+        console.error.apply(console,args);
+    }
 
 }
+
+
 
 /**
  * Instance of an OIC Stack
@@ -15,13 +30,15 @@ var defaultOpts = {
 var OIC = function(stackopts) {
     var stack = this;
 	var Resources = new ordererdTable(); // list of OICResources
-	
+	var hrefTree = new lookupTreeRegex();
 
 	var Interfaces = []; // so we can bind multicast to an address... b/c we listen on multicast
 
     var opts = stackopts || {};
     _.defaults(opts, defaultOpts);
 
+    var dOut = function() { if(opts.debugOutput) opts.debugOut.apply(undefined,arguments); }
+    var eOut = function() { if(opts.errorOutput) opts.errorOut.apply(undefined,arguments); }
 
     var OICResourceDefaults = {
         _uri: "NOT_SET",
@@ -30,28 +47,29 @@ var OIC = function(stackopts) {
         props: 0
     };
 
-    var defaultResourceCB = function() {
-
-    }
 
 	/**
 	 * Equates to the OICResource object in C library. Analagous to the OCCreateResource() in csdk/stack/src/ocstack.c
 	 * @param {[type]} owner The owning OIC stack instance
 	 */
 	var OICResource = function(owner,typename,interfacename,uri,handler,flags) {
+        var resource = this;
+        var defaultResourceCB = function() {
+            dOut("default resource handler: " + this.props._uri);
+        }
 
 		var context = null;
 		var sequenceNum = null;
-        var handlerCB = defaultResourceCB;
-        if(handler) handlerCB = handler; 
+        this.handlerCB = defaultResourceCB;
+        if(handler) this.handlerCB = handler; 
 
-        var props = {
+        this.props = {
             _uri: uri,
             _rt:  typename,
             _if:  interfacename,
             flags: flags
         }
-        _.defaults(props,OICResourceDefaults);
+        _.defaults(this.props,OICResourceDefaults);
 
 	// FROM:  csdk/stack/include/internal/ocstackinternal.h
 	// 
@@ -97,11 +115,11 @@ var OIC = function(stackopts) {
             // ]}
             
             var ret = {
-                href : props.uri,
+                href : resource.props._uri,
                 prop : {
-                    "rt" : [ props._rt ],
-                    "if" : [ props._if ],
-                    obs: (props.flags & OIC.OC_OBSERVABLE) ? 1 : 0
+                    "rt" : [ resource.props._rt ],
+                    "if" : [ resource.props._if ],
+                    obs: (resource.props.flags & OIC.OC_OBSERVABLE) ? 1 : 0
                 }
             };
 
@@ -113,14 +131,15 @@ var OIC = function(stackopts) {
      * Returns a handle
      * @param  {[type]} typename      [description]
      * @param  {[type]} interfacename [description]
-     * @param  {[type]} uri           [description]
+     * @param  {string|regex} uri     A String or Regex for a URI which           
      * @param  {[type]} handlerCB     [description]
      * @param  {[type]} props         [description]
      * @return {[type]}               [description]
      */
     this.newResource = function(typename,interfacename,uri,handlerCB,props) {
         var res = new OICResource(stack,typename,interfacename,uri,handlerCB,props);
-        return Resources.add(res);
+        var h = Resources.add(res);
+        hrefTree.add(uri,h); // TODO make this more efficient for larger sets by splitting into multiple strings.
     };
 
     /**
@@ -150,10 +169,50 @@ var OIC = function(stackopts) {
         return JSON.stringify(container);
     }
 
+    var parsePUTPayload = function(buf) {
+        dOut("raw payload <"+ util.inspect(buf)+">");
+        var s = buf.toString();
+        dOut("PUT parse: <"+s+">");
+        var ret = null;
+        if(s) {
+//            s = s + "";
+//            s = s.replace(/[\r\t\n]/g,"");
+              s = s.replace(/\\n/g, "\\n")  // preserve these if they are really there
+               .replace(/\\'/g, "\\'")
+               .replace(/\\"/g, '\\"')
+               .replace(/\\&/g, "\\&")
+               .replace(/\\r/g, "\\r")
+               .replace(/\\t/g, "\\t")
+               .replace(/\\b/g, "\\b")
+               .replace(/\\f/g, "\\f");
+            s = s.replace(/[\u0000-\u0019]+/g,""); // remove non-printable and other non-valid JSON chars which seems to be coming from the Intel Android app
+//            s = s.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":');
+//            s = s.slice(0);
+            dOut("cleaned: <"+s+">");
+            try {
+                ret = JSON.parse(s);
+
+//                ret = JSON.parse('{"oc":[{"rep":{"state":"true"}}]}');
+
+            } catch (e) {
+                eOut(" JSON parse error: " + util.inspect(e));
+                return null;
+            }
+            if(ret && ret.oc && ret.oc[0]) {
+                return ret.oc[0];
+            } else {
+                eOut(" Malformed OIC payload.");
+                return null;
+            }
+        } else 
+            return null;
+    }
 
 	var server;
 
     // public:
+
+
 
     /**
      * Starts the stack
@@ -168,8 +227,74 @@ var OIC = function(stackopts) {
 
             console.dir(arguments);
             console.log("-- Request for: " + req.url);
-            if(req.url == OIC.OC_WELL_KNOWN_URI_str)
+            if(req.url == OIC.OC_WELL_KNOWN_URI_str) {
                 res.end(getResponse_DiscoverResources());
+            } else {
+                dOut("got: " +req.method);
+                var container = {
+                    oc:[]
+                };
+
+                var h = hrefTree.lookup(req.url);
+                var r = null;
+                if(h) {
+                    dOut("Resource found: " + req.url);
+                    r = Resources.lookup(h);
+                } else {
+                    dOut("Resource not found: " + req.url);
+                }
+                if(req.method == 'GET') {
+                    if(r) {
+                        var retobj = {href: req.url, rep: {} };
+                        var result = r.handlerCB.call(r,req.method,null,req);
+                        if(result !== undefined) {
+                            dOut("have result from cb: " + util.inspect(result));
+                            retobj.rep = result;
+                        }
+                        container.oc.push(retobj);
+                    } else {
+                        // else {
+                        //   TODO - need to return a 'not available'
+                        // }
+                    }
+                    var json_res = JSON.stringify(container);
+                    dOut("resp: " + json_res);
+                    res.end(json_res);                    
+                } else if(req.method == 'PUT') {
+                    if(r) {
+                        (function(cb,method,req,res,resource){
+                            var payload = parsePUTPayload(req.payload);
+                            if(!payload) {
+                                return;
+                            }
+                            dOut(" PUT payload: " + util.inspect(payload));
+                            var responseCB = function(result) {
+                                var retobj = {
+                                    //href: req.url,  // we don't do this in the response for PUT (at least according to Intel's demo app)
+                                    rep: {} };
+                                if(result !== undefined) {
+                                    dOut("have result from responseCB: " + util.inspect(result));
+                                    retobj.rep = result;
+                                }
+                                container.oc.push(retobj);
+                                var json_res = JSON.stringify(container);
+                                dOut("resp: " + json_res);
+                                res.end(json_res);                    
+                            }
+                            cb.call(resource,method,payload,req,responseCB);
+                        })(r.handlerCB,req.method,req,res,r);
+                    } else {
+                        var json_res = JSON.stringify(container);
+                        dOut("resp: " + json_res);
+                        res.end(json_res);                                            
+                    }
+                } else {
+                    eOut("Unsupported method <"+req.method+">");
+                }
+
+            }
+
+
 //			res.end('Hello Node ' + req.url.split('/')[1] + '\n')
 		});
 
