@@ -1,4 +1,6 @@
-node-OIC
+node-iotivity
 ========
 
-node.js bindings for OIC
+node.js library for the [iotivity.org](https://www.iotivity.org/about) specifications from the Open Interconnect Consortium.
+
+
