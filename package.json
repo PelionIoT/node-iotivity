@@ -1,10 +1,17 @@
 {
-  "name": "node-OIC",
-  "version": "0.0.1",
-  "description": "The OIC Stack for node.js",
-  "author": "Ed <ed@wigwag.com>",
+  "name": "iotivity",
+  "version": "0.0.4",
+  "description": "The iotivity.org / OIC Stack for node.js",
+  "author": {
+    "name": "Ed",
+    "email": "ed@wigwag.com"
+  },
   "dependencies": {
-    "node-uuid": "~1.4.2"
+    "bl": "~0.9.0",
+    "coap-packet": "~0.1.12",
+    "lru-cache": "~2.5.0",
+    "node-uuid": "~1.4.2",
+    "async": "*"
   },
   "devDependencies": {}
 }

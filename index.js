@@ -218,15 +218,16 @@ var OIC = function(stackopts) {
      * Starts the stack
      * @return {[type]} [description]
      */
-	this.startServer = function() {
+	this.startServer = function(cb) {
+
 		server = COAP.createServer({
             addMembership: [ '224.0.1.187' ]
         });
 
 		server.on('request', function(req, res) {
 
-            console.dir(arguments);
-            console.log("-- Request for: " + req.url);
+            dOut("COAP request: " + util.inspect(arguments));
+            dOut("-- Request for: " + req.url);
             if(req.url == OIC.OC_WELL_KNOWN_URI_str) {
                 res.end(getResponse_DiscoverResources());
             } else {
@@ -299,18 +300,20 @@ var OIC = function(stackopts) {
 		});
 
        	// the default CoAP port is 5683
-       	server.listen(function() {
+       	server.listen(function(err) {
+            if(err) eOut("Error: " + util.inspect(err));
+            cb(err);
        		var req = COAP.request('coap://[::1]/Matteo');
-
        		req.on('response', function(res) {
        			res.pipe(process.stdout);
-       			res.on('end', function() {
-       				process.exit(0);
+       			res.on('end', function() {                    
+//       				process.exit(0);
        			});
        		});
-
        		req.end();
        	});
+
+
     };
 
     
