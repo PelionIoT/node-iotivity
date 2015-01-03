@@ -218,7 +218,7 @@ var OIC = function(stackopts) {
      * Starts the stack
      * @return {[type]} [description]
      */
-	this.startServer = function(cb) {
+	this.startServer = function(startcb) {
 
 		server = COAP.createServer({
             addMembership: [ '224.0.1.187' ]
@@ -302,7 +302,7 @@ var OIC = function(stackopts) {
        	// the default CoAP port is 5683
        	server.listen(function(err) {
             if(err) eOut("Error: " + util.inspect(err));
-            cb(err);
+            startcb.call(this,err);
        		var req = COAP.request('coap://[::1]/Matteo');
        		req.on('response', function(res) {
        			res.pipe(process.stdout);
