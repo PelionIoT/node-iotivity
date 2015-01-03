@@ -1,0 +1,9 @@
+.cproject
+.project
+.git
+.gitignore
+./lib/resource
+./lib/services
+./lib/tools
+./lib/extlibs
+

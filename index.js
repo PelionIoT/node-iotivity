@@ -226,6 +226,14 @@ var OIC = function(stackopts) {
 
 		server.on('request', function(req, res) {
 
+            req.on('error',function(e){
+                eOut("Error on request: " + util.inspect(e));
+            });
+
+            res.on('error',function(e) {
+                eOut("Error on response: " + util.inspect(e));
+            });
+
             dOut("COAP request: " + util.inspect(arguments));
             dOut("-- Request for: " + req.url);
             if(req.url == OIC.OC_WELL_KNOWN_URI_str) {
@@ -303,14 +311,14 @@ var OIC = function(stackopts) {
        	server.listen(function(err) {
             if(err) eOut("Error: " + util.inspect(err));
             startcb.call(this,err);
-       		var req = COAP.request('coap://[::1]/Matteo');
-       		req.on('response', function(res) {
-       			res.pipe(process.stdout);
-       			res.on('end', function() {                    
-//       				process.exit(0);
-       			});
-       		});
-       		req.end();
+//        		var req = COAP.request('coap://[::1]/Matteo');
+//        		req.on('response', function(res) {
+//        			res.pipe(process.stdout);
+//        			res.on('end', function() {                    
+// //       				process.exit(0);
+//        			});
+//        		});
+//        		req.end();
        	});
 
 
